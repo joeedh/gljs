@@ -12,7 +12,19 @@ let tokens = [
 ];
 
 function p_start(p) {
+    let name = p.expect("ID")
+    p.expect("LPAREN");
 
+    let args = [];
+
+    let t = p.peekone()
+    while (t.type != "RPAREN") {
+        let arg = p.expect("ID");
+        args.push(arg);
+
+        p.optional("COMMA");
+        t = p.peekone()
+    }
 }
 
 function p_error(token, msg) {
@@ -22,3 +34,4 @@ function p_error(token, msg) {
 let lex = new lexer(tokens);
 parser = new Parser(lex, p_error);
 parser.start = p_start;
+
