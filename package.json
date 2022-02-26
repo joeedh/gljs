@@ -1,6 +1,10 @@
 {
   "devDependencies": {
+    "nan": "^2.15.0",
     "node-gyp": "^8.4.1"
   },
-  "typr" : "module"
+  "type": "module",
+  "dependencies": {
+    "bindings": "^1.5.0"
+  }
 }
