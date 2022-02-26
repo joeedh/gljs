@@ -1,7 +1,10 @@
-import {api} from './gljs_def.js';
+import * as gl from './gljs_def_gl.h.js';
+import * as glew from './gljs_def_glew.h.js';
 
-let code = api.genAPI();
+glew.api.combine(gl.api);
+
+let code = glew.api.genAPI();
 import fs from 'fs';
 
 fs.writeFileSync("gljs.cpp", code);
-console.log(code);
+//console.log(code);

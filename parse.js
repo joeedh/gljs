@@ -2,7 +2,13 @@ import {tokdef, parser as Parser, lexer} from "./parseutil.js"
 
 let t = (name, re, func) => new tokdef(name, re, func);
 let tokens = [
-  t("ID", /[a-zA-Z_]+[a-zA-Z_0-9]*/),
+  t("ID", /[a-zA-Z_]+[a-zA-Z_0-9]*/, t => {
+    if (t.value === "const") {
+      t.type = "CONST";
+    }
+
+    return t;
+  }),
   t("LPAREN", /\(/),
   t("RPAREN", /\)/),
   t("STAR", /\*/),
@@ -12,18 +18,77 @@ let tokens = [
   t("WS", /[ \n\r\t]+/, () => undefined), //drop token
 ];
 
-function p_start(p) {
-  let name = p.expect("ID")
-  let rtype = "void";
-
-  if (p.peeknext().type === "ID") {
-    rtype = name;
-    name = p.expect("ID");
-
-    while (p.optional("STAR")) {
-      rtype += "*";
-    }
+function p_id_or_const(p) {
+  if (p.peeknext().type === "CONST") {
+    return p.expect("CONST");
+  } else {
+    return p.expect("ID");
   }
+}
+
+function p_id_or_const_or_star(p) {
+  if (p.peeknext().type === "CONST") {
+    return p.expect("CONST");
+  } else if (p.peeknext().type === "STAR") {
+    return p.expect("STAR");
+  } else if (p.peeknext().type === "ID") {
+    return p.expect("ID");
+  }
+}
+
+function p_var(p) {
+  let arg = {type: '', argStr: '', name: '', pointer: 0};
+
+  let id = p_id_or_const_or_star(p);
+
+  while (id) {
+    if (id === "const") {
+      arg.isConst = true;
+      arg.argStr += " " + id;
+
+      id = p_id_or_const_or_star(p);
+      continue;
+    }
+
+    if (id === "*") {
+      if (arg.name.length > 0) {
+        arg.argStr += " " + arg.name;
+        arg.type = arg.name;
+        arg.name = '';
+      }
+
+      arg.argStr += id;
+      arg.pointer++;
+
+      id = p_id_or_const_or_star(p);
+      continue;
+    }
+
+    if (arg.name) {
+      arg.argStr += " " + arg.name;
+      arg.type = arg.name;
+    }
+
+    arg.name = id;
+
+    id = p_id_or_const_or_star(p);
+  }
+
+  arg.type = arg.type.trim();
+  arg.name = arg.name.trim();
+  arg.argStr = arg.argStr.trim();
+
+  if (arg.type.length === 0 && arg.name === 'void') {
+    arg.type = 'void';
+  }
+
+  return arg;
+}
+
+function p_start(p) {
+  let ret = p_var(p);
+  let name = ret.name;
+  let rtype = ret.argStr;
 
   p.expect("LPAREN");
 
@@ -31,17 +96,7 @@ function p_start(p) {
 
   let t = p.peeknext()
   while (t && t.type !== "RPAREN") {
-    let arg = p.expect("ID");
-
-    arg = {type : arg, pointer : 0, name : ""};
-
-    while (p.optional("STAR")) {
-      arg.pointer++;
-    }
-
-    if (p.peeknext().type === "ID") {
-      arg.name = p.expect("ID");
-    }
+    let arg = p_var(p);
 
     args.push(arg);
 
@@ -60,6 +115,7 @@ function p_start(p) {
 }
 
 let silent = false;
+
 export function setSilent(state) {
   silent = state;
 }
