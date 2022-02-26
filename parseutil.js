@@ -484,7 +484,7 @@ function test_parser() {
   function p_Type(p) {
     var tok = p.peek()
 
-    if (tok.type == "ID") {
+    if (tok.type === "ID") {
       p.next();
       return {type : "struct", data : "\"" + tok.value + "\""};
     } else if (basic_types.has(tok.type.toLowerCase())) {

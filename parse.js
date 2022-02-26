@@ -19,6 +19,10 @@ function p_start(p) {
   if (p.peeknext().type === "ID") {
     rtype = name;
     name = p.expect("ID");
+
+    while (p.optional("STAR")) {
+      rtype += "*";
+    }
   }
 
   p.expect("LPAREN");
@@ -29,10 +33,14 @@ function p_start(p) {
   while (t && t.type !== "RPAREN") {
     let arg = p.expect("ID");
 
-    arg = {name : arg, pointer : 0};
+    arg = {type : arg, pointer : 0, name : ""};
 
     while (p.optional("STAR")) {
       arg.pointer++;
+    }
+
+    if (p.peeknext().type === "ID") {
+      arg.name = p.expect("ID");
     }
 
     args.push(arg);
@@ -41,14 +49,25 @@ function p_start(p) {
     t = p.peeknext()
   }
 
+  if (args.length === 1 && args[0].type === "void" && args[0].pointer === 0) {
+    args = [];
+  }
+
   p.expect("RPAREN");
   return {
     args, name, rtype
   }
 }
 
+let silent = false;
+export function setSilent(state) {
+  silent = state;
+}
+
 function p_error(token, msg) {
-  console.log("error!", msg)
+  if (!silent) {
+    console.log(msg)
+  }
   throw new Error(msg);
 }
 

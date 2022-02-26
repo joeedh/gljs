@@ -13,6 +13,32 @@ const Types = {
 
 let vowels = ["a", "e", "i", "o", "u"];
 
+let typemap = {
+  size    : "size_t",
+  enum    : "int",
+  sizei   : "size_t",
+  uint    : "unsigned int",
+  uchar   : "unsigned char",
+  ushort  : "unsigned short",
+  clampf  : "float",
+  bitfield: "int",
+  clampd  : "double",
+  ubyte   : "unsigned char",
+  byte    : "char"
+};
+
+function getBaseType(type) {
+  if (type.startsWith("GL")) {
+    type = type.slice(2, type.length);
+  }
+
+  if (type in typemap) {
+    return typemap[type];
+  }
+
+  return type;
+}
+
 function anType(type) {
   type = type.toLowerCase();
   if (vowels.indexOf(type[0]) >= 0) {
@@ -22,23 +48,10 @@ function anType(type) {
   }
 }
 
-class Type {
-  constructor(type, name) {
-    this.name = name;
-    this.type = type;
-  }
-}
-
-class Binding {
-  constructor(name, args) {
-    this.name = name;
-    this.args = args;
-  }
-}
-
-class API {
+export class API {
   constructor(args = []) {
     this.functions = [];
+    this.enums = {};
 
     for (let arg of args) {
       this.add(arg);
@@ -48,23 +61,29 @@ class API {
 
   add(arg) {
     if (typeof arg === "string") {
-      arg = parser.parse(arg);
+      try {
+        let arg2 = parser.parse(arg);
+        arg = arg2;
+      } catch (error) {
+        throw new Error("failed to parse '" + arg + "'");
+      }
 
     }
 
-    console.log(arg)
     this.functions.push(arg);
   }
 
+  addEnums(enums) {
+    this.enums = Object.assign(this.enums, enums);
+    return this;
+  }
+
   handleArg(arg, index) {
-    let typemap = {
-      size : "size_t",
-      enum : "GLenum",
-      bool : "GLbool"
-    };
+    let type = arg.type;
+    if (type.startsWith("GL")) {
+      //type = type.slice(2, type.length);
+    }
 
-
-    let type = arg.name;
     if (type in typemap) {
       type = typemap[type];
     }
@@ -87,24 +106,48 @@ class API {
       }
 
       s += `
-  if (!info[${index}].IsNumber()) {
+  if (!info[${index}]->IsNumber()) {
     Nan::ThrowError("Invalid parameter ${index + 1}, expected ${anType(type)}");
     return;
   }
   
   ${fulltype} arg${index} = info[${index}]->${tostr}(ctx).ToChecked();
       `;
+    } else if (getBaseType(type) === "string") {
+      s += `
+  auto arg${index}_str = Nan::Utf8String(v8::Local<v8::Value> input[${index}]);
+  ${fulltype} arg${index} = *arg${index}_str;
+      
+      `;
+    } else if (pointer === 1 && getBaseType(type) === "string") {
+      s += `
+  if (!info[${index}]->IsString()) {
+    Nan::ThrowError("Invalid parameter ${index + 1}, expected a string");
+    return;
+  }
+      `;
     } else {
-      let type2 = type === 'void' ? 'char ' : type;
+      let type2 = getBaseType(type);
+      type2 = type2 === "void" && arg.pointer === 1 ? "char" : type2;
+
+      let tarraytype = type;
+
+      for (let i = 0; i < arg.pointer; i++) {
+        tarraytype += "*";
+      }
+
+      for (let i = 0; i < arg.pointer - 1; i++) {
+        type2 += "*";
+      }
 
       s += `
-  if (!info[${index}].IsTypedArray()) {
+  if (!info[${index}]->IsTypedArray()) {
     Nan::ThrowError("Invalid parameter ${index + 1}, expected a typed array");
     return;
   }
   
   Nan::TypedArrayContents<${type2}> arg${index}_tarray(info[${index}]);
-  ${fulltype} arg${index} = reinterpret_cast<${type}*>(*arg${index}_tarray);
+  ${tarraytype} arg${index} = reinterpret_cast<${tarraytype}>(*arg${index}_tarray);
       `;
     }
 
@@ -116,7 +159,8 @@ class API {
     let name = func.name;
 
     if (name.startsWith("gl")) {
-      name = name.slice(2, name.length).trim();
+      name = name.slice(3, name.length).trim();
+      name = func.name[2].toLowerCase() + name;
     }
 
     func.jsName = name;
@@ -128,11 +172,9 @@ NAN_METHOD(${name}) {
     return;
   }
   
-  
-
   auto ctx = Nan::GetCurrentContext();
 
-      `;
+`;
 
     let i = 0;
     for (let arg of func.args) {
@@ -174,12 +216,12 @@ NAN_METHOD(${name}) {
 
   genAPI() {
     let s = `/* Warning: auto-generated code! */
+#include <nan.h>
+#include <cstdio>
+
 #include <GL/gl.h>
 //#include <GL/glew.h>
 //#include <GL/glfw.h>
-
-#include <nan.h>
-#include <cstdio>
 
 using v8::FunctionTemplate;
 
@@ -206,12 +248,3 @@ NODE_MODULE(gljs, InitAll)
     return s;
   }
 }
-
-let api = new API([
-  "void glTexImge2D(enum,int,int,size,size,int,enum,enum,void*)",
-]);
-
-let code = api.genAPI();
-import fs from 'fs';
-
-console.log(code);
